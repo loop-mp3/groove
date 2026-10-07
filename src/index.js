@@ -279,7 +279,7 @@ export default {
     if (url.pathname === "/" && request.method === "GET") {
       return json({ message: "Welcome to the Groove API! usage documentation available at https://github.com/loop-mp3/groove/blob/main/docs/USAGE.md" });
     }
-    const trackMatch = url.pathname.match(/^\/api\/v1\/track\/([^/]+)$/);
+    const trackMatch = url.pathname.match(/^\/api\/v1\/lyrics\/([^/]+)$/);
     if (trackMatch && request.method === "GET") {
       const videoId = decodeURIComponent(trackMatch[1]);
       if (!YOUTUBE_ID_PATTERN.test(videoId)) {

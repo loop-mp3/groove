@@ -193,7 +193,7 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
     if (expectedDuration !== undefined) {
       lyricResults = lyricResults.filter((result) => {
         const resultDuration = Number(result.duration);
-        return Number.isFinite(resultDuration) && Math.abs(resultDuration - expectedDuration) < 0.5;
+        return Number.isFinite(resultDuration) && resultDuration <= expectedDuration;
       });
     }
     if (!lyricResults.length) return emptyLyrics();

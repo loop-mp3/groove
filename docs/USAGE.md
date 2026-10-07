@@ -34,7 +34,7 @@ Invoke-RestMethod https://groove.mizucode.qzz.io/api/v1/track/dQw4w9WgXcQ
 
 The YouTube video ID must be the standard 11-character ID containing only letters, numbers, `_`, or `-`.
 
-There is no separate lyrics endpoint. Track metadata, plain lyrics, synced lyrics, and the generated lyrics file are returned together by the track endpoint. When `duration` is supplied, only LRCLIB results within 0.5 seconds of that duration are accepted, preventing lyrics from a different version of the song from being returned.
+There is no separate lyrics endpoint. Track metadata, plain lyrics, synced lyrics, and the generated lyrics file are returned together by the track endpoint. When `duration` is supplied, LRCLIB results longer than that duration are skipped, while shorter or equal-duration results remain eligible.
 
 ## Response
 

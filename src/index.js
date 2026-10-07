@@ -276,6 +276,9 @@ export default {
       return json({ name: "groove-api", version: "0.1.0" });
     }
 
+    if (url.pathname === "/" && request.method === "GET") {
+      return json({ message: "Welcome to the Groove API! usage documentation available at https://github.com/loop-mp3/groove/blob/main/docs/USAGE.md" });
+    }
     const trackMatch = url.pathname.match(/^\/api\/v1\/track\/([^/]+)$/);
     if (trackMatch && request.method === "GET") {
       const videoId = decodeURIComponent(trackMatch[1]);

@@ -8,10 +8,22 @@ Groove lrc lib wrapper which returns lyrics data from youtube track id
 GET /api/v1/track/:youtubeVideoId
 ```
 
+An optional `duration` query parameter can be supplied in seconds:
+
+```text
+GET /api/v1/track/:youtubeVideoId?duration=:durationInSeconds
+```
+
 Example:
 
 ```sh
 curl https://groove.mizucode.qzz.io/api/v1/track/dQw4w9WgXcQ
+```
+
+With duration matching:
+
+```sh
+curl "https://groove.mizucode.qzz.io/api/v1/track/dQw4w9WgXcQ?duration=214"
 ```
 
 PowerShell:
@@ -22,7 +34,7 @@ Invoke-RestMethod https://groove.mizucode.qzz.io/api/v1/track/dQw4w9WgXcQ
 
 The YouTube video ID must be the standard 11-character ID containing only letters, numbers, `_`, or `-`.
 
-There is no separate lyrics endpoint. Track metadata, plain lyrics, synced lyrics, and the generated lyrics file are returned together by the track endpoint.
+There is no separate lyrics endpoint. Track metadata, plain lyrics, synced lyrics, and the generated lyrics file are returned together by the track endpoint. When `duration` is supplied, only LRCLIB results within 0.5 seconds of that duration are accepted, preventing lyrics from a different version of the song from being returned.
 
 ## Response
 
@@ -69,7 +81,7 @@ For a track ID, Groove:
 5. Checks LRCLIB candidates until it finds synced timestamps or an instrumental result.
 6. Returns the selected LRCLIB metadata, lyrics, and generated `lyricsfile`.
 
-Transient upstream failures are retried with exponential backoff. If lyrics cannot be found, the response still follows the same schema with nullable lyric fields.
+Transient upstream failures are retried with exponential backoff. Groove waits 200 ms between LRCLIB requests. If lyrics cannot be found, the response still follows the same schema with nullable lyric fields.
 
 ## Errors
 

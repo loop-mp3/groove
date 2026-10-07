@@ -88,14 +88,14 @@ function buildLyricsFile({ title, artist, album, duration, instrumental, plainLy
   return output.join("\n");
 }
 
-function toLyricsSchema({ title, artist, lyrics }) {
+function toLyricsSchema({ title, artist, lyrics, durationOverride }) {
   const meta = lyrics?.meta || {};
   const trackName = meta.trackName || title;
   const artistName = meta.artistName || artist;
   const albumName = meta.albumName || "";
   const plainLyrics = lyrics?.plainLyrics ?? meta.plainLyrics ?? null;
   const syncedLyrics = lyrics?.syncedLyrics ?? meta.syncedLyrics ?? null;
-  const duration = Number(meta.duration || 0);
+  const duration = durationOverride ?? Number(meta.duration || 0);
   const instrumental = Boolean(meta.instrumental);
 
   return {
@@ -167,10 +167,17 @@ async function getOEmbedMetadata(videoId) {
   return response.json();
 }
 
-async function getLyricsFromTrackInfo(videoId, title, artist) {
+async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) {
+  let hasMadeLrclibRequest = false;
+  const fetchLrclib = async (input) => {
+    if (hasMadeLrclibRequest) await sleep(200);
+    hasMadeLrclibRequest = true;
+    return fetchWithRetries(input);
+  };
+
   const search = async (query) => {
     const url = `https://lrclib.net/api/search?${new URLSearchParams({ q: query })}`;
-    const response = await fetchWithRetries(url);
+    const response = await fetchLrclib(url);
     return response.json();
   };
 
@@ -179,16 +186,21 @@ async function getLyricsFromTrackInfo(videoId, title, artist) {
 
     // This is Loop's fallback: retry with the title alone when the artist query misses.
     if (!results?.[0] && artist.trim()) {
-      await sleep(150);
       results = await search(title);
     }
 
-    const lyricResults = results?.filter((result) => result?.id) || [];
+    let lyricResults = results?.filter((result) => result?.id) || [];
+    if (expectedDuration !== undefined) {
+      lyricResults = lyricResults.filter((result) => {
+        const resultDuration = Number(result.duration);
+        return Number.isFinite(resultDuration) && Math.abs(resultDuration - expectedDuration) < 0.5;
+      });
+    }
     if (!lyricResults.length) return emptyLyrics();
 
     let firstResultLyrics = null;
     for (const [resultIndex, result] of lyricResults.entries()) {
-      const response = await fetchWithRetries(`https://lrclib.net/api/get/${result.id}`);
+      const response = await fetchLrclib(`https://lrclib.net/api/get/${result.id}`);
       const meta = await response.json();
       const syncedLyrics = meta?.syncedLyrics || result.syncedLyrics || null;
       const plainLyrics = meta?.plainLyrics || result.plainLyrics || null;
@@ -215,8 +227,9 @@ async function getLyricsFromTrackInfo(videoId, title, artist) {
   }
 }
 
-async function resolveTrack(videoId) {
-  if (requestCache.has(videoId)) return requestCache.get(videoId);
+async function resolveTrack(videoId, expectedDuration) {
+  const cacheKey = `${videoId}:${expectedDuration ?? "default"}`;
+  if (requestCache.has(cacheKey)) return requestCache.get(cacheKey);
 
   const pending = (async () => {
     const details = await getOEmbedMetadata(videoId);
@@ -232,20 +245,21 @@ async function resolveTrack(videoId) {
       .trim();
     const title = details.title || playerMetadata?.title || "Unknown track";
     const artist = playerMetadata?.artist || authorName || details.author_name || "Unknown artist";
-    const lyrics = await getLyricsFromTrackInfo(videoId, title, authorName || artist);
+    const lyrics = await getLyricsFromTrackInfo(videoId, title, authorName || artist, expectedDuration);
 
     return toLyricsSchema({
       title,
       artist,
       lyrics: lyrics || emptyLyrics(),
+      durationOverride: expectedDuration,
     });
   })();
 
-  requestCache.set(videoId, pending);
+  requestCache.set(cacheKey, pending);
   try {
     return await pending;
   } catch (error) {
-    requestCache.delete(videoId);
+    requestCache.delete(cacheKey);
     throw error;
   }
 }
@@ -286,8 +300,17 @@ export default {
         return json({ error: "Invalid YouTube video ID" }, { status: 400 });
       }
 
+      const durationParam = url.searchParams.get("duration");
+      const expectedDuration = durationParam === null ? undefined : Number(durationParam);
+      if (
+        expectedDuration !== undefined &&
+        (!Number.isFinite(expectedDuration) || expectedDuration < 0)
+      ) {
+        return json({ error: "Invalid duration" }, { status: 400 });
+      }
+
       try {
-        return json(await resolveTrack(videoId));
+        return json(await resolveTrack(videoId, expectedDuration));
       } catch (error) {
         return json({ error: "Could not resolve track metadata" }, { status: 502 });
       }

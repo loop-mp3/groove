@@ -1,0 +1,3 @@
+# Local-only Worker variables go here.
+# Copy this file to .dev.vars and add secrets without committing them.
+ENVIRONMENT=development

@@ -167,6 +167,24 @@ async function getOEmbedMetadata(videoId) {
   return response.json();
 }
 
+function lyricsDurationExceedsTrack(lyricsMeta, lyricsQueryResult, trackDurationInSeconds, syncedLyrics) {
+  if (!Number.isFinite(trackDurationInSeconds)) return false;
+  const duration = Number(lyricsMeta?.duration ?? lyricsQueryResult?.duration);
+  const durationExceeds = Number.isFinite(duration) && Math.round(duration + 30) > trackDurationInSeconds;
+  if (!durationExceeds) return false;
+
+  const lastNonEmptyLine = String(syncedLyrics || "")
+    .split(/\r?\n/)
+    .reverse()
+    .find((line) => line.replace(/\[\d{1,3}:\d{2}(?:\.\d+)?\]/g, "").trim());
+  const lastLyricTimestamp = lastNonEmptyLine?.match(/\[(\d{1,3}):(\d{2})(?:\.(\d+))?\]/);
+  if (!lastLyricTimestamp) return durationExceeds;
+
+  const lyricEnd = Number(lastLyricTimestamp[1]) * 60 + Number(lastLyricTimestamp[2]) +
+    Number(`0.${lastLyricTimestamp[3] || 0}`);
+  return lyricEnd > trackDurationInSeconds;
+}
+
 async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) {
   let hasMadeLrclibRequest = false;
   const fetchLrclib = async (input) => {
@@ -189,13 +207,7 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
       results = await search(title);
     }
 
-    let lyricResults = results?.filter((result) => result?.id) || [];
-    if (expectedDuration !== undefined) {
-      lyricResults = lyricResults.filter((result) => {
-        const resultDuration = Number(result.duration);
-        return Number.isFinite(resultDuration) && resultDuration <= expectedDuration;
-      });
-    }
+    const lyricResults = results?.filter((result) => result?.id) || [];
     if (!lyricResults.length) return emptyLyrics();
 
     let firstResultLyrics = null;
@@ -204,6 +216,18 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
       const meta = await response.json();
       const syncedLyrics = meta?.syncedLyrics || result.syncedLyrics || null;
       const plainLyrics = meta?.plainLyrics || result.plainLyrics || null;
+
+      if (
+        expectedDuration !== undefined &&
+        lyricsDurationExceedsTrack(meta, result, expectedDuration, syncedLyrics)
+      ) {
+        console.log(`[groove] Skipping LRCLIB result ${resultIndex + 1} because its duration or final lyric exceeds the track duration.`, {
+          trackDurationInSeconds: expectedDuration,
+          lyricsDuration: meta?.duration ?? result.duration,
+        });
+        continue;
+      }
+
       const lyrics = {
         meta,
         syncedLyrics: meta?.instrumental && !syncedLyrics && !plainLyrics
@@ -218,7 +242,6 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
       }
 
       if ((meta?.hasWordSync ?? result.hasWordSync) === false) continue;
-      void resultIndex;
     }
 
     return firstResultLyrics || emptyLyrics();

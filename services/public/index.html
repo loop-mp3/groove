@@ -561,7 +561,7 @@ async function submitOverride() {
     const result = await withTimeout(`${state.apiBase}/overrides`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({trackId: state.trackId, lyricsId: state.selectedCandidate ? String(state.selectedCandidate.id) : null, provider: "lrclib", instrumental: isInstrumentalSelected()})
+      body: JSON.stringify({trackId: state.trackId, lyricsId: state.selectedCandidate ? String(state.selectedCandidate.id) : (isInstrumentalSelected() ? "instrumental" : null), provider: "lrclib", instrumental: isInstrumentalSelected()})
     }, "Override submission");
     setStatus(`Override saved for ${state.trackId}`, "ok");
     showModal("Override submitted", isInstrumentalSelected() && !state.selectedCandidate

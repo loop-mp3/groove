@@ -48,7 +48,7 @@ async function getOverrideLyrics(override) {
     throw new Error(`Unsupported override provider: ${override?.provider || "unknown"}`);
   }
 
-  if (override.instrumental && !override.lyricsId) {
+  if (override.instrumental) {
     return {
       meta: { instrumental: true },
       instrumental: true,

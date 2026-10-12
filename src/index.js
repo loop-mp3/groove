@@ -294,7 +294,9 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
 
 async function resolveTrack(videoId, expectedDuration, useOverrides, overridesApiUrl) {
   const cacheKey = `${videoId}:${expectedDuration ?? "default"}:${useOverrides ? "overrides" : "automatic"}`;
-  if (requestCache.has(cacheKey)) return requestCache.get(cacheKey);
+  // Override records can change independently of this Worker, so never reuse
+  // a cached override response after a new submission.
+  if (!useOverrides && requestCache.has(cacheKey)) return requestCache.get(cacheKey);
 
   const pending = (async () => {
     const details = await getOEmbedMetadata(videoId);
@@ -312,15 +314,19 @@ async function resolveTrack(videoId, expectedDuration, useOverrides, overridesAp
     const artist = playerMetadata?.artist || authorName || details.author_name || "Unknown artist";
 
     if (useOverrides) {
-      const override = await getGrooveOverride(videoId, overridesApiUrl);
-      if (override) {
-        const lyrics = await getOverrideLyrics(override);
-        return toLyricsSchema({
-          title,
-          artist,
-          lyrics,
-          durationOverride: expectedDuration,
-        });
+      try {
+        const override = await getGrooveOverride(videoId, overridesApiUrl);
+        if (override) {
+          const lyrics = await getOverrideLyrics(override);
+          return toLyricsSchema({
+            title,
+            artist,
+            lyrics,
+            durationOverride: expectedDuration,
+          });
+        }
+      } catch (error) {
+        console.warn(`[groove] Override lookup failed for ${videoId}; falling back to automatic lyrics resolution.`, error);
       }
     }
 
@@ -334,7 +340,7 @@ async function resolveTrack(videoId, expectedDuration, useOverrides, overridesAp
     });
   })();
 
-  requestCache.set(cacheKey, pending);
+  if (!useOverrides) requestCache.set(cacheKey, pending);
   try {
     return await pending;
   } catch (error) {

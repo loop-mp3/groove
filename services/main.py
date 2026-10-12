@@ -31,7 +31,7 @@ INSTRUMENTAL_SYMBOLS = ["♪", "♫", "♪"]
 
 class TrackOverride(BaseModel):
     trackId: str = Field(min_length=1)
-    lyricsId: str = Field(min_length=1)
+    lyricsId: str | None = None
     provider: str = Field(min_length=1)
     instrumental: bool = False
 

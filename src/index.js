@@ -48,6 +48,14 @@ async function getOverrideLyrics(override) {
     throw new Error(`Unsupported override provider: ${override?.provider || "unknown"}`);
   }
 
+  if (override.instrumental && !override.lyricsId) {
+    return {
+      meta: { instrumental: true },
+      syncedLyrics: null,
+      plainLyrics: null,
+    };
+  }
+
   const response = await fetchWithRetries(
     `https://lrclib.net/api/get/${encodeURIComponent(override.lyricsId)}`,
   );

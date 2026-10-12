@@ -516,9 +516,14 @@ function selectCandidate(candidate, card) {
   $("lyricsMeta").textContent = candidate.syncedLyrics ? "Synced lyrics available" : candidate.plainLyrics ? "Plain lyrics only" : "No lyrics content available";
   $("copyLyricsBtn").disabled = !state.currentLyrics;
   $("instrumentalCheckbox").checked = Boolean(candidate.instrumental);
-  $("submitBtn").disabled = !state.trackId || !state.currentLyrics;
+  updateSubmitButton();
   setStatus("Candidate selected");
 }
+function isInstrumentalSelected() { return $("instrumentalCheckbox").checked; }
+function canSubmitOverride() {
+  return Boolean(state.trackId && (isInstrumentalSelected() || (state.selectedCandidate && state.currentLyrics)));
+}
+function updateSubmitButton() { $("submitBtn").disabled = !canSubmitOverride(); }
 function stripTimestamps(text) { return String(text||"").replace(/\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]\s*/g, "").replace(/\n{3,}/g,"\n\n").trim(); }
 $("plainMode").addEventListener("click", () => setLyricsMode("plain"));
 $("syncedMode").addEventListener("click", () => setLyricsMode("synced"));
@@ -549,23 +554,25 @@ function openOverrideForTrack(trackId) {
   setTimeout(() => $("trackInput").focus(), 50);
 }
 async function submitOverride() {
-  if (!state.trackId || !state.selectedCandidate || !state.currentLyrics) return;
+  if (!canSubmitOverride()) return;
   const button = $("submitBtn");
   setBusy(button, true, "Submitting");
   try {
     const result = await withTimeout(`${state.apiBase}/overrides`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({trackId: state.trackId, lyricsId: String(state.selectedCandidate.id), provider: "lrclib", instrumental: Boolean($("instrumentalCheckbox").checked)})
+      body: JSON.stringify({trackId: state.trackId, lyricsId: state.selectedCandidate ? String(state.selectedCandidate.id) : null, provider: "lrclib", instrumental: isInstrumentalSelected()})
     }, "Override submission");
     setStatus(`Override saved for ${state.trackId}`, "ok");
-    showModal("Override submitted", `Groove will use LRCLIB lyrics ${state.selectedCandidate.id} for track ${state.trackId}.`, {type:"info"});
+    showModal("Override submitted", isInstrumentalSelected() && !state.selectedCandidate
+      ? `Groove will treat ${state.trackId} as instrumental.`
+      : `Groove will use LRCLIB lyrics ${state.selectedCandidate.id} for track ${state.trackId}.`, {type:"info"});
   } catch (error) {
     setStatus("Override submission failed", "error");
     showModal("Could not submit override", error.message, {type:"error", actionLabel:"Retry submission", onAction:submitOverride});
   } finally {
     button.textContent = button.dataset.oldLabel || "Submit override";
-    button.disabled = !state.trackId || !state.selectedCandidate || !state.currentLyrics;
+    updateSubmitButton();
   }
 }
 $('trackInput').addEventListener('input', () => {
@@ -583,7 +590,7 @@ $("trackForm").addEventListener("submit", async event => {
   state.candidates = [];
   state.selectedCandidate = null;
   state.page = 1;
-  $("submitBtn").disabled = true;
+  updateSubmitButton();
   $("trackSummary").classList.add("hidden");
   $("resultCount").textContent = "Loading track…";
   emptyCandidates("Loading track metadata", "Contacting YouTube oEmbed.");
@@ -610,7 +617,7 @@ $("trackForm").addEventListener("submit", async event => {
   }
 });
 $("copyLyricsBtn").addEventListener("click", async () => copyText(state.currentLyrics, "Lyrics copied"));
-$("instrumentalCheckbox").addEventListener("change", () => { if(state.selectedCandidate) $("submitBtn").disabled = !state.trackId || !state.currentLyrics; });
+$("instrumentalCheckbox").addEventListener("change", updateSubmitButton);
 $("submitBtn").addEventListener("click", submitOverride);
 async function copyText(text, success) {
   try {

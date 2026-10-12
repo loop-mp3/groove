@@ -14,6 +14,20 @@ An optional `duration` query parameter can be supplied in seconds:
 GET /api/v1/track/:youtubeVideoId?duration=:durationInSeconds
 ```
 
+Override lookup can be enabled with `overrides=true`:
+
+```text
+GET /api/v1/track/:youtubeVideoId?overrides=true
+```
+
+When enabled, Groove asks the FastAPI override service from `services/main.py`
+for a saved mapping before running its normal LRCLIB search. The service URL is
+configured with the Worker variable `OVERRIDES_API_URL`; it defaults to
+`http://127.0.0.1:8000` for local development. Set it to the deployed FastAPI
+base URL in the Worker environment when deploying. Saved overrides currently
+support the `lrclib` provider. If no override exists, the normal resolution
+flow is used.
+
 Example:
 
 ```sh
@@ -24,6 +38,12 @@ With duration matching:
 
 ```sh
 curl "https://groove.mizucode.qzz.io/api/v1/track/dQw4w9WgXcQ?duration=214"
+```
+
+With Groove overrides enabled:
+
+```sh
+curl "https://groove.mizucode.qzz.io/api/v1/track/dQw4w9WgXcQ?overrides=true"
 ```
 
 PowerShell:
@@ -72,7 +92,7 @@ Field details:
 
 ## Resolution flow
 
-For a track ID, Groove:
+For a track ID without `overrides=true`, Groove:
 
 1. Fetches canonical title and artist information from YouTube oEmbed.
 2. Enriches the artist/title using the YouTube Music player endpoint when available.
@@ -80,6 +100,11 @@ For a track ID, Groove:
 4. Retries with the title alone when the first search has no results.
 5. Checks LRCLIB candidates until it finds synced timestamps or an instrumental result.
 6. Returns the selected LRCLIB metadata, lyrics, and generated `lyricsfile`.
+
+With `overrides=true`, Groove first fetches the saved override from
+`GET /overrides/{trackId}` on the configured FastAPI service and retrieves the
+specified lyrics ID from its provider. A missing override falls through to the
+automatic flow above.
 
 Transient upstream failures are retried with exponential backoff. Groove waits 200 ms between LRCLIB requests. If lyrics cannot be found, the response still follows the same schema with nullable lyric fields.
 

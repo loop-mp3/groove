@@ -36,6 +36,14 @@ function emptyLyrics() {
   return { meta: null, syncedLyrics: null, plainLyrics: null };
 }
 
+function instrumentalLyrics() {
+  const symbol = ["♪", "♫", "♪"][Math.floor(Math.random() * 3)];
+  return {
+    syncedLyrics: `[00:00.00] Instrumental only\n[99:99.99] ${symbol}`,
+    plainLyrics: `Instrumental only\n${symbol}`,
+  };
+}
+
 async function getGrooveOverride(videoId, overridesApiUrl) {
   const baseUrl = String(overridesApiUrl || "http://127.0.0.1:8000").replace(/\/$/, "");
   const response = await fetchWithRetries(`${baseUrl}/overrides/${encodeURIComponent(videoId)}`);
@@ -49,10 +57,10 @@ async function getOverrideLyrics(override) {
   }
 
   if (override.instrumental) {
+    const lyrics = instrumentalLyrics();
     return {
       meta: { instrumental: true },
-      syncedLyrics: null,
-      plainLyrics: null,
+      ...lyrics,
     };
   }
 

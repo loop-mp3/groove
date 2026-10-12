@@ -51,6 +51,7 @@ async function getOverrideLyrics(override) {
   if (override.instrumental && !override.lyricsId) {
     return {
       meta: { instrumental: true },
+      instrumental: true,
       syncedLyrics: null,
       plainLyrics: null,
     };
@@ -65,6 +66,7 @@ async function getOverrideLyrics(override) {
       ...meta,
       instrumental: Boolean(override.instrumental) || Boolean(meta.instrumental),
     },
+    instrumental: Boolean(override.instrumental) || Boolean(meta.instrumental),
     syncedLyrics: meta.syncedLyrics || null,
     plainLyrics: meta.plainLyrics || null,
   };
@@ -130,7 +132,7 @@ function toLyricsSchema({ title, artist, lyrics, durationOverride }) {
   const plainLyrics = lyrics?.plainLyrics ?? meta.plainLyrics ?? null;
   const syncedLyrics = lyrics?.syncedLyrics ?? meta.syncedLyrics ?? null;
   const duration = durationOverride ?? Number(meta.duration || 0);
-  const instrumental = Boolean(meta.instrumental);
+  const instrumental = Boolean(lyrics?.instrumental) || Boolean(meta.instrumental);
 
   return {
     id: meta.id ?? null,

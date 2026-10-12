@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
@@ -84,7 +85,10 @@ def pushTrack(
 
 @app.get("/")
 async def root():
-    return {"message": "Groove Override API"}
+    # The static client lives beside this API module in services/public.
+    # Resolving from the repository root made the endpoint fail with a
+    # FileNotFoundError after the client was moved into the services folder.
+    return FileResponse(Path(__file__).resolve().parent / "public" / "index.html")
 
 
 @app.post("/overrides")

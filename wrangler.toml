@@ -4,3 +4,5 @@ compatibility_date = "2026-10-07"
 
 [vars]
 ENVIRONMENT = "development"
+# FastAPI service used when requests include ?overrides=true.
+OVERRIDES_API_URL = "http://127.0.0.1:8000"

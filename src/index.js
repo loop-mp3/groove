@@ -36,6 +36,32 @@ function emptyLyrics() {
   return { meta: null, syncedLyrics: null, plainLyrics: null };
 }
 
+async function getGrooveOverride(videoId, overridesApiUrl) {
+  const baseUrl = String(overridesApiUrl || "http://127.0.0.1:8000").replace(/\/$/, "");
+  const response = await fetchWithRetries(`${baseUrl}/overrides/${encodeURIComponent(videoId)}`);
+  if (response.status === 404) return null;
+  return response.json();
+}
+
+async function getOverrideLyrics(override) {
+  if (String(override?.provider || "").toLowerCase() !== "lrclib") {
+    throw new Error(`Unsupported override provider: ${override?.provider || "unknown"}`);
+  }
+
+  const response = await fetchWithRetries(
+    `https://lrclib.net/api/get/${encodeURIComponent(override.lyricsId)}`,
+  );
+  const meta = await response.json();
+  return {
+    meta: {
+      ...meta,
+      instrumental: Boolean(override.instrumental) || Boolean(meta.instrumental),
+    },
+    syncedLyrics: meta.syncedLyrics || null,
+    plainLyrics: meta.plainLyrics || null,
+  };
+}
+
 function hasSyncedLyricTimestamps(syncedLyrics) {
   return String(syncedLyrics || "")
     .split(/\r?\n/)
@@ -250,8 +276,8 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
   }
 }
 
-async function resolveTrack(videoId, expectedDuration) {
-  const cacheKey = `${videoId}:${expectedDuration ?? "default"}`;
+async function resolveTrack(videoId, expectedDuration, useOverrides, overridesApiUrl) {
+  const cacheKey = `${videoId}:${expectedDuration ?? "default"}:${useOverrides ? "overrides" : "automatic"}`;
   if (requestCache.has(cacheKey)) return requestCache.get(cacheKey);
 
   const pending = (async () => {
@@ -268,6 +294,20 @@ async function resolveTrack(videoId, expectedDuration) {
       .trim();
     const title = details.title || playerMetadata?.title || "Unknown track";
     const artist = playerMetadata?.artist || authorName || details.author_name || "Unknown artist";
+
+    if (useOverrides) {
+      const override = await getGrooveOverride(videoId, overridesApiUrl);
+      if (override) {
+        const lyrics = await getOverrideLyrics(override);
+        return toLyricsSchema({
+          title,
+          artist,
+          lyrics,
+          durationOverride: expectedDuration,
+        });
+      }
+    }
+
     const lyrics = await getLyricsFromTrackInfo(videoId, title, authorName || artist, expectedDuration);
 
     return toLyricsSchema({
@@ -325,6 +365,7 @@ export default {
 
       const durationParam = url.searchParams.get("duration");
       const expectedDuration = durationParam === null ? undefined : Number(durationParam);
+      const useOverrides = url.searchParams.get("overrides") === "true";
       if (
         expectedDuration !== undefined &&
         (!Number.isFinite(expectedDuration) || expectedDuration < 0)
@@ -333,7 +374,7 @@ export default {
       }
 
       try {
-        return json(await resolveTrack(videoId, expectedDuration));
+        return json(await resolveTrack(videoId, expectedDuration, useOverrides, env.OVERRIDES_API_URL));
       } catch (error) {
         return json({ error: "Could not resolve track metadata" }, { status: 502 });
       }

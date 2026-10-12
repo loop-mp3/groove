@@ -1,5 +1,7 @@
 # Groove
 
+> [!IMPORTANT]
+> some tracks might fail to resolve lyrics submit the correct lyrics id at https://loop.mizucode.qzz.io/groove
 ## Groove is a lightweight lyrics API that resolves lyrics for YouTube tracks using YouTube metadata and LRCLIB.
 
 ## Features

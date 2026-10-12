@@ -26,6 +26,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .landing-link{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--muted);font-size:12px;text-transform:uppercase;padding:8px 0;transition:color .18s ease,transform .18s ease}
 .landing-link:hover:not(:disabled){color:white;transform:translateY(-2px)}
 .landing-link:disabled{cursor:not-allowed;opacity:.5}
+.about-link{margin-top:22px;color:var(--muted);font-size:11px;text-decoration:none;transition:color .18s ease}
+.about-link:hover{color:white;text-decoration:underline}
 .resolver-panel{padding:12px 14px;flex:0 0 auto;max-height:205px;overflow:auto}
 .resolver-panel h3{font-size:12px;margin:0 0 6px}
 .resolver-summary{font-size:11px;color:var(--muted);margin:0 0 7px}
@@ -144,6 +146,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       <button class="landing-link" id="openWrong"><span class="pink-icon">LRC<br>GET</span><span>Wrong lyrics?</span></button>
       <button class="landing-link" id="openView"><span class="link-icon">▤</span><span>Search lyrics</span></button>
     </nav>
+    <a class="about-link" href="https://github.com/loop-mp3/groove#readme" target="_blank" rel="noreferrer">What is Groove?</a>
   </div>
 </section>
 

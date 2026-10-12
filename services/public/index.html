@@ -697,6 +697,10 @@ $("viewForm").addEventListener("submit", async event => {
       if (override.lyrics) {
         const record={id:`override-${id}`,trackName:id,artistName:override.provider||"Groove override",plainLyrics:stripTimestamps(override.lyrics),syncedLyrics:override.lyrics,duration:0};
         state.viewResults=[record];
+      } else if (override.instrumental || override.lyricsId === "instrumental") {
+        // "instrumental" is a local sentinel, not an LRCLIB candidate ID.
+        // Never send it to /api/get/, which only accepts numeric LRCLIB IDs.
+        state.viewResults=[{id:"instrumental",trackName:id,artistName:override.provider||"Groove override",plainLyrics:"Instrumental",syncedLyrics:"",duration:0,instrumental:true}];
       } else if (override.lyricsId && (override.provider||"").toLowerCase()==="lrclib") {
         const candidate=await withTimeout(`https://lrclib.net/api/get/${encodeURIComponent(override.lyricsId)}`,{},"LRCLIB lyrics");
         state.viewResults=[candidate];

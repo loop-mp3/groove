@@ -37,10 +37,9 @@ function emptyLyrics() {
 }
 
 function instrumentalLyrics() {
-  const symbol = ["♪", "♫", "♪"][Math.floor(Math.random() * 3)];
   return {
-    syncedLyrics: `[00:00.00] Instrumental only\n[99:99.99] ${symbol}`,
-    plainLyrics: `Instrumental only\n${symbol}`,
+    syncedLyrics: `[00:00.00] Instrumental only\n[99:99.99] `,
+    plainLyrics: `Instrumental only\n `,
   };
 }
 

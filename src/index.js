@@ -243,8 +243,24 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
   try {
     let results = await search(`${title} ${artist}`);
 
-    // This is Loop's fallback: retry with the title alone when the artist query misses.
-    if (!results?.[0] && artist.trim()) {
+    // Second attempt: use the YouTube oEmbed author without the "- Topic" suffix.
+    if (!results?.[0] && videoId) {
+      try {
+        const oEmbed = await getOEmbedMetadata(videoId);
+        const oEmbedArtist = String(oEmbed.author_name || "")
+          .replace(/\s*[-–—]\s*Topic$/i, "")
+          .trim();
+
+        if (oEmbedArtist) {
+          results = await search(`${title} ${oEmbedArtist}`);
+        }
+      } catch (error) {
+        console.warn("[groove] LRCLIB oEmbed artist retry failed; trying title only.", error);
+      }
+    }
+
+    // Final attempt: search using only the title.
+    if (!results?.[0]) {
       results = await search(title);
     }
 
@@ -272,7 +288,7 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
       const lyrics = {
         meta,
         syncedLyrics: meta?.instrumental && !syncedLyrics && !plainLyrics
-          ? "[00:00.00] Instrumental only\n[99:99.99] ♫"
+          ? "[00:00.00] Instrumental only\n[99:99.99] ♪"
           : syncedLyrics,
         plainLyrics,
       };
@@ -293,13 +309,13 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
 
 async function resolveTrack(videoId, expectedDuration, useOverrides, overridesApiUrl) {
   const cacheKey = `${videoId}:${expectedDuration ?? "default"}:${useOverrides ? "overrides" : "automatic"}`;
-  // Override records can change independently of this Worker, so never reuse
-  // a cached override response after a new submission.
+
   if (!useOverrides && requestCache.has(cacheKey)) return requestCache.get(cacheKey);
 
   const pending = (async () => {
     const details = await getOEmbedMetadata(videoId);
     let playerMetadata = null;
+
     try {
       playerMetadata = await getPlayerMetadata(videoId);
     } catch {
@@ -309,6 +325,7 @@ async function resolveTrack(videoId, expectedDuration, useOverrides, overridesAp
     const authorName = String(details.author_name || "")
       .replace(/\s*[-–—]\s*Topic$/i, "")
       .trim();
+
     const title = details.title || playerMetadata?.title || "Unknown track";
     const artist = playerMetadata?.artist || authorName || details.author_name || "Unknown artist";
 
@@ -329,7 +346,12 @@ async function resolveTrack(videoId, expectedDuration, useOverrides, overridesAp
       }
     }
 
-    const lyrics = await getLyricsFromTrackInfo(videoId, title, authorName || artist, expectedDuration);
+    const lyrics = await getLyricsFromTrackInfo(
+      videoId,
+      title,
+      authorName || artist,
+      expectedDuration,
+    );
 
     return toLyricsSchema({
       title,
@@ -340,6 +362,7 @@ async function resolveTrack(videoId, expectedDuration, useOverrides, overridesAp
   })();
 
   if (!useOverrides) requestCache.set(cacheKey, pending);
+
   try {
     return await pending;
   } catch (error) {
@@ -375,11 +398,16 @@ export default {
     }
 
     if (url.pathname === "/" && request.method === "GET") {
-      return json({ message: "Welcome to the Groove API! usage documentation available at https://github.com/loop-mp3/groove/blob/main/docs/USAGE.md" });
+      return json({
+        message: "Welcome to the Groove API! usage documentation available at https://github.com/loop-mp3/groove/blob/main/docs/USAGE.md",
+      });
     }
+
     const trackMatch = url.pathname.match(/^\/api\/v1\/track\/([^/]+)$/);
+
     if (trackMatch && request.method === "GET") {
       const videoId = decodeURIComponent(trackMatch[1]);
+
       if (!YOUTUBE_ID_PATTERN.test(videoId)) {
         return json({ error: "Invalid YouTube video ID" }, { status: 400 });
       }
@@ -387,6 +415,7 @@ export default {
       const durationParam = url.searchParams.get("duration");
       const expectedDuration = durationParam === null ? undefined : Number(durationParam);
       const useOverrides = url.searchParams.get("overrides") === "true";
+
       if (
         expectedDuration !== undefined &&
         (!Number.isFinite(expectedDuration) || expectedDuration < 0)
@@ -395,8 +424,13 @@ export default {
       }
 
       try {
-        return json(await resolveTrack(videoId, expectedDuration, useOverrides, env.OVERRIDES_API_URL));
-      } catch (error) {
+        return json(await resolveTrack(
+          videoId,
+          expectedDuration,
+          useOverrides,
+          env.OVERRIDES_API_URL,
+        ));
+      } catch {
         return json({ error: "Could not resolve track metadata" }, { status: 502 });
       }
     }

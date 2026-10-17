@@ -7,6 +7,9 @@ const corsHeaders = {
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const YOUTUBE_MUSIC_CLIENT_VERSION = "1.20260928.13.00";
 const requestCache = new Map();
+const cachedAt = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX_ENTRIES = 500;
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -21,12 +24,28 @@ async function fetchWithRetries(input, init = {}, options = {}) {
       if (response.ok || ![408, 425, 429, 500, 502, 503, 504].includes(response.status)) {
         return response;
       }
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      const retryAfterDate = retryAfterHeader ? Date.parse(retryAfterHeader) : NaN;
+      const retryAfterMs = Number.isFinite(retryAfterSeconds)
+        ? retryAfterSeconds * 1000
+        : Number.isFinite(retryAfterDate)
+          ? Math.max(0, retryAfterDate - Date.now())
+          : 0;
       lastError = new Error(`Request returned ${response.status}`);
+      lastError.status = response.status;
+      lastError.retryAfterMs = retryAfterMs;
     } catch (error) {
       lastError = error;
     }
 
-    if (attempt < attempts - 1) await sleep(baseDelay * 2 ** attempt);
+    if (attempt < attempts - 1) {
+      const retryAfterMs = Number(lastError?.retryAfterMs) || 0;
+      const delay = retryAfterMs > 0
+        ? Math.min(retryAfterMs, options.maxRetryAfter ?? 2000)
+        : baseDelay * 2 ** attempt;
+      await sleep(delay);
+    }
   }
 
   throw lastError || new Error("Request failed");
@@ -34,6 +53,23 @@ async function fetchWithRetries(input, init = {}, options = {}) {
 
 function emptyLyrics() {
   return { meta: null, syncedLyrics: null, plainLyrics: null };
+}
+
+function pruneRequestCache() {
+  const now = Date.now();
+
+  for (const [key, timestamp] of cachedAt.entries()) {
+    if (now - timestamp > CACHE_TTL_MS) {
+      requestCache.delete(key);
+      cachedAt.delete(key);
+    }
+  }
+
+  while (requestCache.size > CACHE_MAX_ENTRIES) {
+    const oldestKey = requestCache.keys().next().value;
+    requestCache.delete(oldestKey);
+    cachedAt.delete(oldestKey);
+  }
 }
 
 function instrumentalLyrics() {
@@ -237,6 +273,7 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
   const search = async (query) => {
     const url = `https://lrclib.net/api/search?${new URLSearchParams({ q: query })}`;
     const response = await fetchLrclib(url);
+    if (!response.ok) throw new Error(`LRCLIB search returned HTTP ${response.status}`);
     return response.json();
   };
 
@@ -270,6 +307,21 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
     let firstResultLyrics = null;
     for (const [resultIndex, result] of lyricResults.entries()) {
       const response = await fetchLrclib(`https://lrclib.net/api/get/${result.id}`);
+      if (!response.ok) {
+        if ([429, 500, 502, 503, 504].includes(response.status)) {
+          const syncedLyrics = result.syncedLyrics || null;
+          const plainLyrics = result.plainLyrics || null;
+          if (syncedLyrics || plainLyrics) {
+            const fallbackLyrics = { meta: result, syncedLyrics, plainLyrics };
+            firstResultLyrics ||= fallbackLyrics;
+            if (hasSyncedLyricTimestamps(syncedLyrics) || result.instrumental) {
+              return fallbackLyrics;
+            }
+            continue;
+          }
+        }
+        throw new Error(`LRCLIB lyrics detail returned HTTP ${response.status}`);
+      }
       const meta = await response.json();
       const syncedLyrics = meta?.syncedLyrics || result.syncedLyrics || null;
       const plainLyrics = meta?.plainLyrics || result.plainLyrics || null;
@@ -302,7 +354,8 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
     }
 
     return firstResultLyrics || emptyLyrics();
-  } catch {
+  } catch (error) {
+    console.warn("[groove] LRCLIB resolution failed:", error);
     return null;
   }
 }
@@ -310,7 +363,11 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
 async function resolveTrack(videoId, expectedDuration, useOverrides, overridesApiUrl) {
   const cacheKey = `${videoId}:${expectedDuration ?? "default"}:${useOverrides ? "overrides" : "automatic"}`;
 
-  if (!useOverrides && requestCache.has(cacheKey)) return requestCache.get(cacheKey);
+  if (!useOverrides) {
+    pruneRequestCache();
+    const cached = requestCache.get(cacheKey);
+    if (cached) return cached;
+  }
 
   const pending = (async () => {
     const details = await getOEmbedMetadata(videoId);
@@ -361,7 +418,11 @@ async function resolveTrack(videoId, expectedDuration, useOverrides, overridesAp
     });
   })();
 
-  if (!useOverrides) requestCache.set(cacheKey, pending);
+  if (!useOverrides) {
+    requestCache.set(cacheKey, pending);
+    cachedAt.set(cacheKey, Date.now());
+    pruneRequestCache();
+  }
 
   try {
     return await pending;

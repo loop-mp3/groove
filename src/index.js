@@ -306,8 +306,13 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
 
     let firstResultLyrics = null;
     for (const [resultIndex, result] of lyricResults.entries()) {
-      const response = await fetchLrclib(`https://lrclib.net/api/get/${result.id}`);
-      if (!response.ok) {
+      // Search payloads already include lyrics. Avoid an extra detail request for the common case;
+      // it both reduces LRCLIB traffic and avoids triggering its rate limit while switching tracks.
+      const searchHasLyrics = Boolean(result.syncedLyrics || result.plainLyrics || result.instrumental);
+      const response = searchHasLyrics
+        ? null
+        : await fetchLrclib(`https://lrclib.net/api/get/${result.id}`);
+      if (response && !response.ok) {
         const syncedLyrics = result.syncedLyrics || null;
         const plainLyrics = result.plainLyrics || null;
         if ([429, 500, 502, 503, 504].includes(response.status) && (syncedLyrics || plainLyrics)) {
@@ -318,7 +323,7 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
         }
         throw new Error(`LRCLIB lyrics detail returned HTTP ${response.status}`);
       }
-      const meta = await response.json();
+      const meta = response ? await response.json() : result;
       const syncedLyrics = meta?.syncedLyrics || result.syncedLyrics || null;
       const plainLyrics = meta?.plainLyrics || result.plainLyrics || null;
 

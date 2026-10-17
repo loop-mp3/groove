@@ -308,17 +308,13 @@ async function getLyricsFromTrackInfo(videoId, title, artist, expectedDuration) 
     for (const [resultIndex, result] of lyricResults.entries()) {
       const response = await fetchLrclib(`https://lrclib.net/api/get/${result.id}`);
       if (!response.ok) {
-        if ([429, 500, 502, 503, 504].includes(response.status)) {
-          const syncedLyrics = result.syncedLyrics || null;
-          const plainLyrics = result.plainLyrics || null;
-          if (syncedLyrics || plainLyrics) {
-            const fallbackLyrics = { meta: result, syncedLyrics, plainLyrics };
-            firstResultLyrics ||= fallbackLyrics;
-            if (hasSyncedLyricTimestamps(syncedLyrics) || result.instrumental) {
-              return fallbackLyrics;
-            }
-            continue;
-          }
+        const syncedLyrics = result.syncedLyrics || null;
+        const plainLyrics = result.plainLyrics || null;
+        if ([429, 500, 502, 503, 504].includes(response.status) && (syncedLyrics || plainLyrics)) {
+          const fallbackLyrics = { meta: result, syncedLyrics, plainLyrics };
+          firstResultLyrics ||= fallbackLyrics;
+          if (hasSyncedLyricTimestamps(syncedLyrics) || result.instrumental) return fallbackLyrics;
+          continue;
         }
         throw new Error(`LRCLIB lyrics detail returned HTTP ${response.status}`);
       }
